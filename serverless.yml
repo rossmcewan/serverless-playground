@@ -1,0 +1,72 @@
+service: serverless-playground
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  lambdaHashingVersion: 20201221
+  iam:
+    role:
+      name: the-execution-role
+      statements:
+        - Effect: Deny
+          Action:
+            - 'dynamodb:*'
+          Resource: '*'
+        - Effect: Allow
+          Action: 'sts:AssumeRole'
+          Resource: '*'
+
+functions:
+  withAssumed:
+    environment:
+      TARGET_ROLE: ${self:resources.Outputs.TheRoleArn.Value}
+    handler: handler.withAssumed
+  withoutAssumed:
+    environment:
+      TARGET_ROLE: ${self:resources.Outputs.TheRoleArn.Value}
+    handler: handler.withoutAssumed
+
+plugins:
+  - serverless-pseudo-parameters
+
+resources:
+  Resources:
+    TheRole:
+      Type: AWS::IAM::Role
+      DependsOn: IamRoleLambdaExecution
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                AWS: 
+                  - arn:aws:iam::#{AWS::AccountId}:role/the-execution-role
+              Action:
+                - 'sts:AssumeRole'
+        Policies:
+          - PolicyName: root
+            PolicyDocument: 
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action: 'dynamodb:*'
+                  Resource: '*'
+    TheTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: TheTable
+        KeySchema: 
+          - AttributeName: id
+            KeyType: HASH
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+  Outputs:
+    TheRoleArn:
+      Value:
+        Fn::GetAtt:
+          - TheRole
+          - Arn
